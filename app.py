@@ -24,7 +24,8 @@ print("--- End Debug ---")
 
 
 # Import core AI and memory logic
-from ai_logic import chat_chain
+# UPDATED: Import extract_and_store_facts from ai_logic
+from ai_logic import chat_chain, extract_and_store_facts 
 from langchain_core.messages import BaseMessage
 from persistent_memory import update_user_fact, get_all_user_facts, get_user_facts, purge_data_by_key # Ensure purge_data_by_key is imported
 
@@ -83,15 +84,13 @@ else: # User is identified, proceed with chat
         """
         llm_input_parts = []
 
-        current_user_facts = get_user_facts(user_id)
-        if current_user_facts:
-            fact_strings = [f"{k}: {v}" for k, v in current_user_facts.items()]
-            llm_input_parts.append(f"Gamin, you have these known facts about the current user, {username}: {'; '.join(fact_strings)}")
-
+        # The facts are now automatically added to the system prompt in ai_logic.py
+        # No need to manually add them here.
+        
         llm_input_parts.append(f"{username} (ID: {user_id}): {user_query}")
         llm_input = "\n".join(llm_input_parts)
 
-        print(f"DEBUG: LLM Input: {llm_input}")
+        print(f"DEBUG: LLM Input: {llm_input}") # This input is for the main chat chain
 
         try:
             raw_response = chat_chain.invoke(
@@ -111,22 +110,11 @@ else: # User is identified, proceed with chat
             else:
                 final_reply = str(raw_response)
 
-            memory_pattern = re.compile(r'\[REMEMBER:\s*([^=]+?)\s*=\s*(.+?)\]')
-            match = memory_pattern.search(final_reply)
-
-            if match:
-                key = match.group(1).strip()
-                value = match.group(2).strip()
-
-                if key and value:
-                    try:
-                        update_user_fact(user_id, key, value)
-                        print(f"DEBUG: Stored fact for {username} ({user_id}): {key} = {value}")
-                        final_reply = final_reply.replace(match.group(0), '').strip()
-                    except Exception as mem_e:
-                        print(f"ERROR: Error saving memory for user {user_id}: {mem_e}")
-                else:
-                    print(f"WARNING: Parsed empty key or value from REMEMBER tag for user {user_id}. Key='{key}', Value='{value}'")
+            # --- REMOVED OLD REGEX MEMORY EXTRACTION ---
+            # memory_pattern = re.compile(r'\[REMEMBER:\s*([^=]+?)\s*=\s*(.+?)\]')
+            # match = memory_pattern.search(final_reply)
+            # if match: ... (removed logic)
+            # --- END REMOVED ---
 
             print(f"DEBUG: Final reply from Gamin: {final_reply}")
             return final_reply
@@ -145,6 +133,10 @@ else: # User is identified, proceed with chat
         with st.chat_message("user", avatar=USER_AVATAR):
             st.markdown(prompt)
 
+        # --- NEW: Call the information extraction logic FIRST ---
+        # This will run for every user message, trying to learn facts.
+        extract_and_store_facts(prompt, user_id, username)
+
         ai_response = "" 
 
         # --- Logic: Intercept "show db" command for Emil ---
@@ -160,8 +152,14 @@ else: # User is identified, proceed with chat
                 for u_id, facts in all_facts.items():
                     db_output += f"**User ID:** `{u_id}`\n"
                     if facts:
-                        for key, value in facts.items():
-                            db_output += f"- `{key}`: `{value}`\n"
+                        for key, value_str in facts.items():
+                            try:
+                                # Try to load value as JSON, for the new structured facts
+                                parsed_value = json.loads(value_str)
+                                db_output += f"- `{key}`: `{json.dumps(parsed_value, indent=2)}`\n"
+                            except json.JSONDecodeError:
+                                # If it's not JSON, just display as plain text (old facts or simple ones)
+                                db_output += f"- `{key}`: `{value_str}`\n"
                     else:
                         db_output += "- No facts stored for this user.\n"
                     db_output += "\n" 
@@ -170,6 +168,7 @@ else: # User is identified, proceed with chat
             else:
                 ai_response = "It looks like the database is empty, father. Nothing to show."
                 print("DEBUG (app.py): Database reported as empty from get_all_user_facts().")
+            print(f"DEBUG (app.py): Final ai_response for DB command: {ai_response[:100]}...")
         else: # Normal conversation, pass to LLM
             with st.chat_message("assistant", avatar=GAMIN_AVATAR):
                 with st.spinner("Gamin's nyakking..."):
@@ -218,7 +217,6 @@ else: # User is identified, proceed with chat
         if st.session_state.show_admin_tools:
             st.subheader("Emil's Admin Tools")
             
-            # Removed the introductory hint text
             purge_user_id = st.text_input("User ID to Purge:")
             
             if st.button(f"Purge Data for '{purge_user_id}'", help="Permanently delete all facts associated with this User ID from the database."):
@@ -226,10 +224,9 @@ else: # User is identified, proceed with chat
                     try:
                         purge_data_by_key(purge_user_id)
                         st.success(f"Successfully purged all data for User ID: `{purge_user_id}`.")
-                        # Add a message to chat history confirming purge
                         st.session_state.messages.append({"role": "assistant", "content": f"Father, I have purged all data for User ID: `{purge_user_id}`. You can now type 'show me the db' to verify."})
                     except Exception as e:
                         st.error(f"Error purging data: {e}")
-                    st.rerun() # Rerun to update the display and show success/error message
+                    st.rerun() 
                 else:
                     st.warning("Please enter a User ID to purge before clicking the button.")
