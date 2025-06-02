@@ -5,13 +5,31 @@ import re
 import io
 import json
 
+# --- ADDED DEBUG PRINT STATEMENTS HERE ---
+print("--- Streamlit App Startup Debug ---")
+print(f"Current Working Directory: {os.getcwd()}")
+print(f"Contents of current directory: {os.listdir(os.getcwd())}")
+# Check if .env file exists locally (this won't be on Streamlit Cloud if gitignored)
+if os.path.exists(".env"):
+    print(".env file found locally.")
+else:
+    print(".env file NOT found locally (expected on cloud).")
+
+print("Checking DATABASE_URL loading from environment...")
+# This is the critical line: it shows what os.getenv('DATABASE_URL') returns
+print(f"DATABASE_URL value: {os.getenv('DATABASE_URL')}")
+print("Finished checking DATABASE_URL.")
+print("--- End Debug ---")
+# --- END OF DEBUG PRINT STATEMENTS ---
+
+
 # Import core AI and memory logic
 from ai_logic import chat_chain
 from langchain_core.messages import BaseMessage
 from persistent_memory import update_user_fact, get_all_user_facts, get_user_facts, purge_data_by_key # Ensure purge_data_by_key is imported
 
 # --- Configuration ---
-load_dotenv()
+load_dotenv() # This loads .env ONLY LOCALLY, not on Streamlit Cloud where secrets are used.
 
 GAMIN_AVATAR = "Avatar/Gamin.webp"
 USER_AVATAR = "Avatar/gatto.jpg" 
