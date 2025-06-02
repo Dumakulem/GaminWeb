@@ -1,4 +1,26 @@
-.env
-__pycache__/
-*.pyc
-*.db
+# Gamin Specific
+.env                 # Contains your API keys and DB URL (private!)
+*.db                 # Your local SQLite database file (now using Supabase, so this is just local)
+
+# Python-specific files
+__pycache__/         # Python bytecode cache directory
+*.pyc                # Python bytecode files
+*.pytest_cache/      # pytest cache directory (if you add tests later)
+.mypy_cache/         # MyPy type checker cache
+.ruff_cache/         # Ruff linter cache (if using)
+
+# Virtual environment
+.venv/               # Your virtual environment folder itself. Crucial to ignore!
+env/                 # Common alternative name for virtual environment
+venv/                # Common alternative name for virtual environment
+
+# IDE-specific files (e.g., VS Code, PyCharm)
+.vscode/             # VS Code settings, tasks, etc.
+.idea/               # PyCharm project files
+
+# OS-specific temporary files
+.DS_Store            # macOS folder metadata
+Thumbs.db            # Windows thumbnail cache
+
+# Streamlit specific (if any local cache files were created)
+.streamlit/cache/    # Streamlit's local cache directory
