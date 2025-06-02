@@ -227,4 +227,4 @@ else: # User is identified, proceed with chat
                         st.error(f"Error purging data: {e}")
                     st.rerun()
                 else:
-                    st.warning("Please enter a User ID to purge before clicking the button.")
+                     st.warning("Please enter a User ID to purge before clicking the button.")
