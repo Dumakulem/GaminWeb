@@ -25,7 +25,7 @@ print("--- End Debug ---")
 
 # Import core AI and memory logic
 # UPDATED: Import extract_and_store_facts from ai_logic
-from ai_logic import chat_chain, extract_and_store_facts 
+from ai_logic import chat_chain, extract_and_store_facts
 from langchain_core.messages import BaseMessage
 from persistent_memory import update_user_fact, get_all_user_facts, get_user_facts, purge_data_by_key # Ensure purge_data_by_key is imported
 
@@ -33,7 +33,7 @@ from persistent_memory import update_user_fact, get_all_user_facts, get_user_fac
 load_dotenv() # This loads .env ONLY LOCALLY, not on Streamlit Cloud where secrets are used.
 
 GAMIN_AVATAR = "Avatar/Gamin.webp"
-USER_AVATAR = "Avatar/gatto.jpg" 
+USER_AVATAR = "Avatar/gatto.jpg"
 
 # --- Streamlit App UI ---
 st.set_page_config(page_title="Gamin~", page_icon="🐾")
@@ -46,7 +46,7 @@ if "user_identified" not in st.session_state:
     st.session_state.user_identified = False
     st.session_state.current_user_name = None
     st.session_state.current_user_id = None
-    st.session_state.messages = [] 
+    st.session_state.messages = []
 
 if not st.session_state.user_identified:
     st.info("Hii sino ka dito sa dalawa?")
@@ -72,6 +72,7 @@ if not st.session_state.user_identified:
             st.rerun()
 else: # User is identified, proceed with chat
     # --- Display Chat Messages ---
+    # THIS IS THE PRIMARY LOOP FOR DISPLAYING ALL MESSAGES
     for message in st.session_state.messages:
         avatar_path = GAMIN_AVATAR if message["role"] == "assistant" else USER_AVATAR
         with st.chat_message(message["role"], avatar=avatar_path):
@@ -84,13 +85,10 @@ else: # User is identified, proceed with chat
         """
         llm_input_parts = []
 
-        # The facts are now automatically added to the system prompt in ai_logic.py
-        # No need to manually add them here.
-        
         llm_input_parts.append(f"{username} (ID: {user_id}): {user_query}")
         llm_input = "\n".join(llm_input_parts)
 
-        print(f"DEBUG: LLM Input: {llm_input}") # This input is for the main chat chain
+        print(f"DEBUG: LLM Input: {llm_input}")
 
         try:
             raw_response = chat_chain.invoke(
@@ -110,12 +108,6 @@ else: # User is identified, proceed with chat
             else:
                 final_reply = str(raw_response)
 
-            # --- REMOVED OLD REGEX MEMORY EXTRACTION ---
-            # memory_pattern = re.compile(r'\[REMEMBER:\s*([^=]+?)\s*=\s*(.+?)\]')
-            # match = memory_pattern.search(final_reply)
-            # if match: ... (removed logic)
-            # --- END REMOVED ---
-
             print(f"DEBUG: Final reply from Gamin: {final_reply}")
             return final_reply
 
@@ -128,58 +120,64 @@ else: # User is identified, proceed with chat
         user_id = st.session_state.current_user_id
         username = st.session_state.current_user_name
 
-        # Add user's message to chat history and display it
+        # Add user's message to chat history immediately and display it
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user", avatar=USER_AVATAR):
             st.markdown(prompt)
 
-        # --- NEW: Call the information extraction logic FIRST ---
-        # This will run for every user message, trying to learn facts.
+        # Call the information extraction logic FIRST
         extract_and_store_facts(prompt, user_id, username)
 
-        ai_response = "" 
+        ai_response = "" # Initialize ai_response
 
-        # --- Logic: Intercept "show db" command for Emil ---
-        if username == "Emil" and ("show" in prompt.lower() and ("db" in prompt.lower() or "database" in prompt.lower())):
-            st.write("Father's command detected: Retrieving database information...")
-            
-            print("DEBUG (app.py): Calling get_all_user_facts()") 
-            all_facts = get_all_user_facts() 
-            print(f"DEBUG (app.py): get_all_user_facts() returned: {all_facts}") 
-
-            if all_facts:
-                db_output = "### Database Contents:\n\n"
-                for u_id, facts in all_facts.items():
-                    db_output += f"**User ID:** `{u_id}`\n"
-                    if facts:
-                        for key, value_str in facts.items():
-                            try:
-                                # Try to load value as JSON, for the new structured facts
-                                parsed_value = json.loads(value_str)
-                                db_output += f"- `{key}`: `{json.dumps(parsed_value, indent=2)}`\n"
-                            except json.JSONDecodeError:
-                                # If it's not JSON, just display as plain text (old facts or simple ones)
-                                db_output += f"- `{key}`: `{value_str}`\n"
-                    else:
-                        db_output += "- No facts stored for this user.\n"
-                    db_output += "\n" 
-                ai_response = db_output
-                print(f"DEBUG (app.py): db_output generated (first 200 chars): {ai_response[:200]}...") 
-            else:
-                ai_response = "It looks like the database is empty, father. Nothing to show."
-                print("DEBUG (app.py): Database reported as empty from get_all_user_facts().")
-            print(f"DEBUG (app.py): Final ai_response for DB command: {ai_response[:100]}...")
-        else: # Normal conversation, pass to LLM
-            with st.chat_message("assistant", avatar=GAMIN_AVATAR):
-                with st.spinner("Gamin's nyakking..."):
-                    ai_response = get_gamin_response(prompt, user_id, username)
-        
-        # --- IMPORTANT FIX: Display Gamin's (or DB's) response consistently ---
+        # Create a temporary placeholder for Gamin's response while thinking/processing
+        # This will show the spinner and then the actual message
         with st.chat_message("assistant", avatar=GAMIN_AVATAR):
-            st.markdown(ai_response)
+            message_placeholder = st.empty() # Create an empty container that can be updated
 
-        # Add the final response to session history
+            # Logic: Intercept "show db" command for Emil
+            if username == "Emil" and ("show" in prompt.lower() and ("db" in prompt.lower() or "database" in prompt.lower())):
+                message_placeholder.write("Father's command detected: Retrieving database information...")
+
+                print("DEBUG (app.py): Calling get_all_user_facts()")
+                all_facts = get_all_user_facts()
+                print(f"DEBUG (app.py): get_all_user_facts() returned: {all_facts}")
+
+                if all_facts:
+                    db_output = "### Database Contents:\n\n"
+                    for u_id, facts in all_facts.items():
+                        db_output += f"**User ID:** `{u_id}`\n"
+                        if facts:
+                            for key, value_str in facts.items():
+                                try:
+                                    parsed_value = json.loads(value_str)
+                                    db_output += f"- `{key}`: `{json.dumps(parsed_value, indent=2)}`\n"
+                                except json.JSONDecodeError:
+                                    db_output += f"- `{key}`: `{value_str}`\n"
+                        else:
+                            db_output += "- No facts stored for this user.\n"
+                        db_output += "\n"
+                    ai_response = db_output
+                    print(f"DEBUG (app.py): db_output generated (first 200 chars): {ai_response[:200]}...")
+                else:
+                    ai_response = "It looks like the database is empty, father. Nothing to show."
+                    print("DEBUG (app.py): Database reported as empty from get_all_user_facts().")
+                print(f"DEBUG (app.py): Final ai_response for DB command: {ai_response[:100]}...")
+
+                # Update the placeholder with the final DB output
+                message_placeholder.markdown(ai_response)
+
+            else: # Normal conversation, pass to LLM
+                # Use the placeholder to show spinner while getting AI response
+                with message_placeholder.container(): # Create a temporary container inside the placeholder
+                    with st.spinner("Gamin's nyakking..."):
+                        ai_response = get_gamin_response(prompt, user_id, username)
+                # After spinner, update the placeholder with the actual AI response
+                message_placeholder.markdown(ai_response)
+
+        # Add the final response to session state for persistence across reruns
         st.session_state.messages.append({"role": "assistant", "content": ai_response})
+        st.rerun() # Force a rerun to update the chat history with the new message
 
     # --- Control Buttons ---
     col1, col2 = st.columns([0.5, 0.5])
@@ -188,7 +186,7 @@ else: # User is identified, proceed with chat
         if st.button("Clear Chat"):
             st.session_state.messages = [{"role": "assistant", "content": f"Hello {st.session_state.current_user_name}! How can I help you today?"}]
             # To also clear the *persistent memory* in the database for this specific user, uncomment the line below if desired
-            # purge_data_by_key(st.session_state.current_user_id) 
+            # purge_data_by_key(st.session_state.current_user_id)
             st.rerun()
 
     with col2:
@@ -202,23 +200,23 @@ else: # User is identified, proceed with chat
     # --- Emil's Admin Tools (visible only to Emil, now with a toggle) ---
     if st.session_state.current_user_name == "Emil":
         st.markdown("---") # Separator for visual clarity
-        
+
         # Initialize toggle state if not already present
         if "show_admin_tools" not in st.session_state:
             st.session_state.show_admin_tools = False
 
         # Toggle switch for Admin Tools
         st.session_state.show_admin_tools = st.toggle(
-            "Show Admin Tools", 
+            "Show Admin Tools",
             value=st.session_state.show_admin_tools,
             help="Toggle to show/hide administrative tools for managing Gamin's data."
         )
 
         if st.session_state.show_admin_tools:
             st.subheader("Emil's Admin Tools")
-            
+
             purge_user_id = st.text_input("User ID to Purge:")
-            
+
             if st.button(f"Purge Data for '{purge_user_id}'", help="Permanently delete all facts associated with this User ID from the database."):
                 if purge_user_id:
                     try:
@@ -227,6 +225,6 @@ else: # User is identified, proceed with chat
                         st.session_state.messages.append({"role": "assistant", "content": f"Father, I have purged all data for User ID: `{purge_user_id}`. You can now type 'show me the db' to verify."})
                     except Exception as e:
                         st.error(f"Error purging data: {e}")
-                    st.rerun() 
+                    st.rerun()
                 else:
                     st.warning("Please enter a User ID to purge before clicking the button.")
